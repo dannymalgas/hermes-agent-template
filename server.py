@@ -485,6 +485,59 @@ async def api_pairing_revoke(request: Request):
     return JSONResponse({"ok": True})
 
 
+_FILES_SKIP = {".git", "__pycache__", "node_modules", ".DS_Store"}
+
+async def api_files_list(request: Request):
+    if err := guard(request): return err
+    base = Path(HERMES_HOME).resolve()
+
+    def build_tree(path: Path, depth: int = 0) -> list:
+        if depth > 6:
+            return []
+        items = []
+        try:
+            entries = sorted(path.iterdir(), key=lambda p: (p.is_file(), p.name.lower()))
+            for entry in entries:
+                if entry.name in _FILES_SKIP:
+                    continue
+                rel = str(entry.relative_to(base))
+                if entry.is_dir():
+                    items.append({"name": entry.name, "path": rel, "type": "dir",
+                                  "children": build_tree(entry, depth + 1)})
+                else:
+                    items.append({"name": entry.name, "path": rel, "type": "file",
+                                  "size": entry.stat().st_size})
+        except PermissionError:
+            pass
+        return items
+
+    return JSONResponse({"tree": build_tree(base), "root": str(base)})
+
+
+async def api_files_read(request: Request):
+    if err := guard(request): return err
+    rel = request.query_params.get("path", "")
+    if not rel:
+        return JSONResponse({"error": "path required"}, status_code=400)
+    base = Path(HERMES_HOME).resolve()
+    target = (base / rel).resolve()
+    try:
+        target.relative_to(base)
+    except ValueError:
+        return JSONResponse({"error": "Access denied"}, status_code=403)
+    if not target.exists() or not target.is_file():
+        return JSONResponse({"error": "File not found"}, status_code=404)
+    size = target.stat().st_size
+    if size > 1_000_000:
+        return JSONResponse({"error": f"File too large ({size:,} bytes). Max 1 MB.", "size": size},
+                            status_code=413)
+    try:
+        content = target.read_text(errors="replace")
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+    return JSONResponse({"content": content, "path": rel, "size": size, "name": target.name})
+
+
 # ── App lifecycle ─────────────────────────────────────────────────────────────
 async def auto_start():
     data = read_env(ENV_FILE)
@@ -517,6 +570,8 @@ routes = [
     Route("/api/pairing/deny",          api_pairing_deny,    methods=["POST"]),
     Route("/api/pairing/approved",      api_pairing_approved),
     Route("/api/pairing/revoke",        api_pairing_revoke,  methods=["POST"]),
+    Route("/api/files",                 api_files_list),
+    Route("/api/files/read",            api_files_read),
 ]
 
 app = Starlette(
