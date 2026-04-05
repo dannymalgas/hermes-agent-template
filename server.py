@@ -123,12 +123,21 @@ def read_env(path: Path) -> dict[str, str]:
 def write_config_yaml(data: dict[str, str]) -> None:
     """Write a minimal config.yaml so hermes picks up the model and provider."""
     model = data.get("LLM_MODEL", "")
+    # Infer explicit provider so the agent doesn't self-report a config warning
+    if data.get("ANTHROPIC_API_KEY"):
+        provider = "anthropic"
+    elif data.get("OPENROUTER_API_KEY"):
+        provider = "openrouter"
+    elif data.get("OPENAI_API_KEY"):
+        provider = "openai"
+    else:
+        provider = "auto"
     config_path = Path(HERMES_HOME) / "config.yaml"
     config_path.parent.mkdir(parents=True, exist_ok=True)
     config_path.write_text(f"""\
 model:
   default: "{model}"
-  provider: "auto"
+  provider: "{provider}"
 
 terminal:
   backend: "local"
