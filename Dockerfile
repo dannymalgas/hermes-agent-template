@@ -4,6 +4,14 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends curl ca-certificates git && \
     rm -rf /var/lib/apt/lists/*
 
+# Install Node.js 20 (needed for Meridian proxy)
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
+    apt-get install -y --no-install-recommends nodejs && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install Meridian — local proxy that routes requests through Claude Code auth
+RUN npm install -g @rynfar/meridian
+
 # Install hermes-agent as a package (gives us the `hermes` CLI entry point)
 RUN git clone --depth 1 https://github.com/NousResearch/hermes-agent.git /tmp/hermes-agent && \
     cd /tmp/hermes-agent && \

@@ -587,6 +587,22 @@
                    :placeholder="selectedProvider ? (providerMap[selectedProvider]?.placeholder||'Paste your API key') : ''">
           </div>
 
+          <div class="field-gap" x-show="selectedProvider === 'Claude Code (Proxy)'" style="background:#1a2a1a;border:1px solid #2a5c2a;border-radius:8px;padding:12px;">
+            <p style="margin:0 0 8px;font-size:13px;color:#7ec87e;font-weight:600;">Using Claude Code Max subscription</p>
+            <p style="margin:0;font-size:12px;color:#aaa;line-height:1.6;">
+              Install and run <strong>Meridian</strong> — a local proxy that routes requests through your authenticated Claude Code session:
+              <code style="display:block;margin:6px 0;padding:4px 8px;background:#0d1a0d;border-radius:4px;color:#7ec87e;">npm install -g @rynfar/meridian</code>
+              <code style="display:block;margin:6px 0;padding:4px 8px;background:#0d1a0d;border-radius:4px;color:#7ec87e;">claude login &amp;&amp; meridian</code>
+              Then set <strong>API Base URL</strong> to <code>http://127.0.0.1:3456</code> and API Key to any value (e.g. <code>x</code>). Meridian listens on port 3456 by default.
+            </p>
+          </div>
+
+          <div class="field-gap" x-show="selectedProvider === 'Anthropic' || selectedProvider === 'Claude Code (Proxy)'">
+            <label class="field-label">API Base URL <span style="opacity:0.55;font-size:11px;font-weight:400">(optional — leave blank for default)</span></label>
+            <input type="text" :value="vars.ANTHROPIC_BASE_URL||''" @input="vars.ANTHROPIC_BASE_URL=$event.target.value"
+                   placeholder="http://127.0.0.1:3456">
+          </div>
+
           <div class="field-gap" x-show="selectedProvider">
             <label class="field-label">LLM Model</label>
             <input type="text" :value="vars.LLM_MODEL||''" @input="vars.LLM_MODEL=$event.target.value"
@@ -913,6 +929,7 @@ function app() {
     tools,
 
     providerMap: {
+      'Claude Code (Proxy)': { key: 'ANTHROPIC_API_KEY', placeholder: 'claude-code', isProxy: true },
       'Anthropic':   { key: 'ANTHROPIC_API_KEY',   placeholder: 'sk-ant-...' },
       'OpenRouter':  { key: 'OPENROUTER_API_KEY',  placeholder: 'sk-or-...' },
       'DeepSeek':    { key: 'DEEPSEEK_API_KEY',     placeholder: 'sk-...'    },
@@ -943,6 +960,10 @@ function app() {
       // Clear keys from other providers when switching
       for (const [name, p] of Object.entries(this.providerMap)) {
         if (name !== this.selectedProvider) this.vars[p.key] = '';
+      }
+      // Clear base URL when switching away from Anthropic-based providers
+      if (this.selectedProvider !== 'Anthropic' && this.selectedProvider !== 'Claude Code (Proxy)') {
+        this.vars.ANTHROPIC_BASE_URL = '';
       }
     },
 
@@ -978,8 +999,13 @@ function app() {
           const d = await r.json();
           this.vars = d.vars || {};
           // Detect active provider
-          for (const [name, p] of Object.entries(this.providerMap)) {
-            if (this.vars[p.key]) { this.selectedProvider = name; break; }
+          if (this.vars.ANTHROPIC_API_KEY && this.vars.ANTHROPIC_BASE_URL) {
+            this.selectedProvider = 'Claude Code (Proxy)';
+          } else {
+            for (const [name, p] of Object.entries(this.providerMap)) {
+              if (name === 'Claude Code (Proxy)') continue; // handled above
+              if (this.vars[p.key]) { this.selectedProvider = name; break; }
+            }
           }
           // Detect active channels
           this.channelsEnabled = {
