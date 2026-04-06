@@ -124,7 +124,36 @@ def write_config_yaml(data: dict[str, str]) -> None:
     """Write a minimal config.yaml so hermes picks up the model and provider."""
     model = data.get("LLM_MODEL", "")
     base_url = data.get("ANTHROPIC_BASE_URL", "")
-    # Infer explicit provider so the agent doesn't self-report a config warning
+
+    # When Meridian proxy is configured, use the model-level base_url approach.
+    # Hermes v0.7.0+ correctly routes to a custom endpoint when base_url is set
+    # on the model block with provider: custom. Meridian exposes OpenAI-compatible
+    # format at /v1 so the anthropic/ prefix is stripped from the model name.
+    if base_url and data.get("ANTHROPIC_API_KEY"):
+        bare_model = model.replace("anthropic/", "")
+        api_key = data.get("ANTHROPIC_API_KEY", "x")
+        config_path = Path(HERMES_HOME) / "config.yaml"
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        config_path.write_text(f"""\
+model:
+  default: "{bare_model}"
+  provider: "custom"
+  base_url: "{base_url}/v1"
+  api_key: "{api_key}"
+
+terminal:
+  backend: "local"
+  timeout: 60
+  cwd: "/tmp"
+
+agent:
+  max_iterations: 50
+
+data_dir: "{HERMES_HOME}"
+""")
+        return
+
+    # Standard provider detection for non-Meridian setups
     if data.get("ANTHROPIC_API_KEY"):
         provider = "anthropic"
     elif data.get("OPENROUTER_API_KEY"):
@@ -133,22 +162,13 @@ def write_config_yaml(data: dict[str, str]) -> None:
         provider = "openai"
     else:
         provider = "auto"
-    # Write provider base_url into config.yaml — Hermes reads it from here,
-    # not from the ANTHROPIC_BASE_URL environment variable.
-    providers_block = ""
-    if base_url and provider != "auto":
-        providers_block = f"""
-providers:
-  {provider}:
-    base_url: "{base_url}"
-"""
     config_path = Path(HERMES_HOME) / "config.yaml"
     config_path.parent.mkdir(parents=True, exist_ok=True)
     config_path.write_text(f"""\
 model:
   default: "{model}"
   provider: "{provider}"
-{providers_block}
+
 terminal:
   backend: "local"
   timeout: 60
